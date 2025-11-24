@@ -1,0 +1,6 @@
+/target
+/downloads
+/temp
+youtube-cookies.txt
+*.swp
+.DS_Store

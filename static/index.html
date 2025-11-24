@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aly Video Downloader</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css?v=4">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>Aly Video Downloader</h1>
+            <button id="theme-toggle" class="theme-toggle" aria-label="Toggle Dark Mode">
+                <span class="toggle-icon">🌙</span>
+            </button>
+        </header>
+
+        <main>
+            <section class="download-section">
+                <h2>動画・音声をダウンロード</h2>
+                <div class="input-group">
+                    <input type="text" id="video-url" placeholder="動画・音声サービスのURLを入力 (Youtube, Twitch, Twitter, etc...)">
+                    <select id="quality-select">
+                        <option value="1080p" selected>1080p (推奨)</option>
+                        <option value="best">最高画質</option>
+                        <option value="720p">720p</option>
+                        <option value="360p">360p</option>
+                        <option value="audio">音声のみ</option>
+                    </select>
+                    <select id="format-select">
+                        <option value="mp4">MP4</option>
+                        <option value="webm">WebM</option>
+                        <option value="mkv">MKV</option>
+                    </select>
+                    <button id="download-btn">ダウンロード</button>
+                </div>
+                <div id="video-info" class="video-info hidden">
+                    <p><strong>タイトル:</strong> <span id="info-title"></span></p>
+                    <p><strong>サービス:</strong> <span id="info-extractor"></span></p>
+                </div>
+                <div id="progress-container" class="hidden">
+                    <!-- 動的にタスクごとのプログレスバーを追加 -->
+                </div>
+                <div id="status-message"></div>
+            </section>
+
+            <section class="list-section">
+                <h2>ダウンロード済み動画</h2>
+                <button id="refresh-btn">リスト更新</button>
+                <ul id="video-list">
+                    <!-- JSでリストを追加 -->
+                </ul>
+            </section>
+        </main>
+    </div>
+    <script src="app.js?v=2"></script>
+</body>
+
+</html>
