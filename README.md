@@ -1,62 +1,62 @@
 # Aly Video Downloader
 
-A modern, powerful, and universal video downloader built with Rust and Vanilla JS.
-Designed for speed, stability, and a premium user experience.
+RustとVanilla JSで構築された、モダンで強力なユニバーサル動画ダウンローダー。
+スピード、安定性、そしてプレミアムなユーザー体験を重視して設計されています。
 
 ![UI Preview](https://via.placeholder.com/800x450.png?text=Aly+Video+Downloader+UI)
 
-## ✨ Features
+## ✨ 特徴
 
-- **Universal Support**: Downloads videos and audio from YouTube, SoundCloud, Twitch, Twitter, and more (powered by `yt-dlp`).
-- **Modern UI**: Sleek, dark-themed interface with a responsive design and smooth animations.
-- **Format Selection**: Choose between Video (MP4) or Audio (MP3) with quality options (4K, 1080p, 720p, etc.).
-- **Real-time Progress**: Live progress bars and status updates for all downloads.
-- **Robust Architecture**:
-  - **Rust Backend**: High-performance asynchronous server using Actix-web.
-  - **Smart Queue**: Handles multiple downloads concurrently without freezing.
-  - **Cookie Support**: Bypasses bot detection for YouTube using browser cookies.
+- **ユニバーサル対応**: YouTube, SoundCloud, Twitch, Twitterなど、多数のサイトから動画や音声をダウンロード可能（`yt-dlp`を使用）。
+- **モダンなUI**: ダークテーマを採用した洗練されたインターフェース。レスポンシブデザインとスムーズなアニメーションを搭載。
+- **フォーマット選択**: 動画（MP4）と音声（MP3）の切り替え、画質（4K, 1080p, 720pなど）の選択が可能。
+- **リアルタイム進捗**: すべてのダウンロード状況をリアルタイムなプログレスバーで表示。
+- **堅牢なアーキテクチャ**:
+  - **Rustバックエンド**: Actix-webを使用した高性能な非同期サーバー。
+  - **スマートキュー**: 複数のダウンロードをフリーズすることなく並列処理。
+  - **Cookieサポート**: ブラウザのCookieを使用してYouTubeのbot検出を回避。
 
-## 🚀 Getting Started
+## 🚀 始め方
 
-### Prerequisites
+### 前提条件
 
-- **Rust**: Latest stable version
-- **yt-dlp**: Must be installed and in your PATH
-- **FFmpeg**: Required for video merging and audio conversion
-- **Node.js**: Required for `yt-dlp` JavaScript execution
+- **Rust**: 最新の安定版
+- **yt-dlp**: インストール済みでPATHが通っていること
+- **FFmpeg**: 動画の結合や音声変換に必要
+- **Node.js**: `yt-dlp`のJavaScript実行に必要
 
-### Installation
+### インストール手順
 
-1. Clone the repository:
+1. リポジトリをクローン:
    ```bash
    git clone https://github.com/Aly3424/aly-video-downloader.git
    cd aly-video-downloader
    ```
 
-2. Build the project:
+2. プロジェクトをビルド:
    ```bash
    cargo build --release
    ```
 
-3. Run the server:
+3. サーバーを起動:
    ```bash
    ./target/release/youtube_downloader
    ```
 
-4. Open your browser and visit:
+4. ブラウザでアクセス:
    `http://localhost:3000`
 
-## 🛠️ Configuration
+## 🛠️ 設定
 
-- **Cookies**: Place your `youtube-cookies.txt` in the root directory to enable YouTube downloads.
-- **Port**: Default runs on port 3000.
+- **Cookie**: YouTubeのダウンロードを有効にするには、ルートディレクトリに `youtube-cookies.txt` を配置してください。
+- **ポート**: デフォルトではポート3000で動作します。
 
-## 📦 Tech Stack
+## 📦 技術スタック
 
 - **Backend**: Rust, Actix-web, Tokio
 - **Frontend**: HTML5, CSS3 (Variables, Flexbox/Grid), Vanilla JavaScript
 - **Core**: yt-dlp, FFmpeg
 
-## 📝 License
+## 📝 ライセンス
 
-This project is open source.
+このプロジェクトはオープンソースです。
