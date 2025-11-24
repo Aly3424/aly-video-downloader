@@ -3,7 +3,7 @@
 RustとVanilla JSで構築された、モダンで強力なユニバーサル動画ダウンローダー。
 スピード、安定性、そしてプレミアムなユーザー体験を重視して設計されています。
 
-![UI Preview](https://via.placeholder.com/800x450.png?text=Aly+Video+Downloader+UI)
+![UI Preview](UI.png)
 
 ## ✨ 特徴
 
