@@ -75,10 +75,10 @@ where
     } else {
         // AV1 (av01) を除外し、それ以外の最高画質を選択（CPU負荷軽減のためリエンコードは行わない）
         let format_selector = match quality {
-            "1080p" => "bestvideo[height<=1080][vcodec!=av01]+bestaudio/best[height<=1080]",
-            "720p"  => "bestvideo[height<=720][vcodec!=av01]+bestaudio/best[height<=720]",
-            "360p"  => "bestvideo[height<=360][vcodec!=av01]+bestaudio/best[height<=360]",
-            _       => "bestvideo[vcodec!=av01]+bestaudio/best",
+            "1080p" => "bestvideo[height<=1080][vcodec!^=av01]+bestaudio/best[height<=1080][vcodec!^=av01]",
+            "720p"  => "bestvideo[height<=720][vcodec!^=av01]+bestaudio/best[height<=720][vcodec!^=av01]",
+            "360p"  => "bestvideo[height<=360][vcodec!^=av01]+bestaudio/best[height<=360][vcodec!^=av01]",
+            _       => "bestvideo[vcodec!^=av01]+bestaudio/best[vcodec!^=av01]",
         };
         command
             .arg("--merge-output-format")
@@ -121,6 +121,7 @@ where
     let re_dest = regex::Regex::new(r"\[download\] Destination: (.*)").unwrap();
     let re_merger = regex::Regex::new(r"\[Merger\] Merging formats into (.*)").unwrap();
     let re_ffmpeg = regex::Regex::new(r"\[VideoConvertor\] Converting video from .* to (.*)").unwrap();
+    let re_already = regex::Regex::new(r"\[download\] (.*) has already been downloaded").unwrap();
     
     let mut final_filename = String::new();
     let mut last_update = std::time::Instant::now();
@@ -145,6 +146,8 @@ where
         } else if let Some(caps) = re_merger.captures(trimmed) {
             final_filename = caps.get(1).map(|m| m.as_str().trim_matches('"').to_string()).unwrap_or(final_filename);
         } else if let Some(caps) = re_ffmpeg.captures(trimmed) {
+            final_filename = caps.get(1).map(|m| m.as_str().trim_matches('"').to_string()).unwrap_or(final_filename);
+        } else if let Some(caps) = re_already.captures(trimmed) {
             final_filename = caps.get(1).map(|m| m.as_str().trim_matches('"').to_string()).unwrap_or(final_filename);
         }
 

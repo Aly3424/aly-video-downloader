@@ -197,12 +197,11 @@ async function fetchVideoInfo(url) {
 }
 
 function updateQualityOptions(extractor) {
-    const ext = extractor.toLowerCase();
+    const ext = (extractor || '').toLowerCase();
     const isAudioOnly = ['soundcloud', 'bandcamp', 'audiomack'].some(s => ext.includes(s));
 
-    if (isAudioOnly) {
+    if (isAudioOnly && ext !== '') {
         qualitySelect.innerHTML = '<option value="audio" selected>音声のみ</option>';
-        updateFormatOptions('audio');
     } else {
         qualitySelect.innerHTML = `
             <option value="1080p" selected>1080p (推奨)</option>
@@ -211,9 +210,9 @@ function updateQualityOptions(extractor) {
             <option value="360p">360p</option>
             <option value="audio">音声のみ</option>
         `;
-        // 現在の選択に基づいてフォーマットを初期化
-        updateFormatOptions(qualitySelect.value);
     }
+    // 表示された選択肢に基づいて、フォーマット（MP4/MP3等）を即座に更新
+    updateFormatOptions(qualitySelect.value);
 }
 
 function updateFormatOptions(quality) {
@@ -236,6 +235,9 @@ function updateFormatOptions(quality) {
 qualitySelect.addEventListener('change', () => {
     updateFormatOptions(qualitySelect.value);
 });
+
+// 初期化（ページ読み込み時）
+updateFormatOptions(qualitySelect.value);
 
 // =====================
 // ダウンロード
