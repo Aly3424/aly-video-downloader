@@ -202,7 +202,7 @@ function updateQualityOptions(extractor) {
 
     if (isAudioOnly) {
         qualitySelect.innerHTML = '<option value="audio" selected>音声のみ</option>';
-        formatSelect.innerHTML = '<option value="mp3">MP3</option><option value="m4a">M4A</option>';
+        updateFormatOptions('audio');
     } else {
         qualitySelect.innerHTML = `
             <option value="1080p" selected>1080p (推奨)</option>
@@ -211,13 +211,31 @@ function updateQualityOptions(extractor) {
             <option value="360p">360p</option>
             <option value="audio">音声のみ</option>
         `;
+        // 現在の選択に基づいてフォーマットを初期化
+        updateFormatOptions(qualitySelect.value);
+    }
+}
+
+function updateFormatOptions(quality) {
+    if (quality === 'audio') {
         formatSelect.innerHTML = `
-            <option value="mp4">MP4</option>
+            <option value="mp3" selected>MP3</option>
+            <option value="m4a">M4A</option>
+            <option value="wav">WAV</option>
+        `;
+    } else {
+        formatSelect.innerHTML = `
+            <option value="mp4" selected>MP4</option>
             <option value="webm">WebM</option>
             <option value="mkv">MKV</option>
         `;
     }
 }
+
+// 品質選択が変更されたらフォーマットを更新
+qualitySelect.addEventListener('change', () => {
+    updateFormatOptions(qualitySelect.value);
+});
 
 // =====================
 // ダウンロード

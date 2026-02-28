@@ -129,31 +129,42 @@ async fn main() {
         auth_state: auth::AuthState::new(),
     });
 
-    // 認証不要のルート
-    let public = Router::new()
-        .route("/api/auth/login", post(login_handler))
-        .nest_service("/login", ServeDir::new("static").append_index_html_on_directories(false))
-        .nest_service("/", ServeDir::new("static"));
-
-    // 認証必要のルート
-    let protected = Router::new()
-        .route("/api/auth/me", get(me_handler))
-        .route("/api/auth/password", post(change_password_handler))
-        .route("/api/download", post(download_handler))
-        .route("/api/videos", get(list_videos_handler))
-        .route("/api/info", post(video_info_handler))
-        .route("/api/tasks/:id", get(task_status_handler))
-        .route("/api/files/:filename", delete(delete_file_handler))
-        .route("/api/ytdlp/version", get(ytdlp_version_handler))
-        .route("/api/ytdlp/update", post(ytdlp_update_handler))
-        .route("/api/admin/users", get(list_users_handler))
-        .route("/api/admin/users", post(create_user_handler))
-        .route("/api/admin/users/:id", delete(delete_user_handler))
+    // 1. 認証が必要な API ルート
+    let api_protected = Router::new()
+        .route("/me", get(me_handler))
+        .route("/password", post(change_password_handler))
         .layer(middleware::from_fn(auth_middleware));
 
-    let app = public
-        .merge(protected)
+    // 2. ダウンロード・動画操作系の API ルート（認証が必要）
+    let api_videos = Router::new()
+        .route("/download", post(download_handler))
+        .route("/videos", get(list_videos_handler))
+        .route("/info", post(video_info_handler))
+        .route("/tasks/:id", get(task_status_handler))
+        .route("/files/:filename", delete(delete_file_handler))
+        .layer(middleware::from_fn(auth_middleware));
+
+    // 3. システム系の API ルート（認証が必要）
+    let api_system = Router::new()
+        .route("/ytdlp/version", get(ytdlp_version_handler))
+        .route("/ytdlp/update", post(ytdlp_update_handler))
+        .route("/admin/users", get(list_users_handler))
+        .route("/admin/users", post(create_user_handler))
+        .route("/admin/users/:id", delete(delete_user_handler))
+        .layer(middleware::from_fn(auth_middleware));
+
+    // 4. アプリ全体の構築
+    let app = Router::new()
+        // 最優先: ダウンロード済みファイル（static wildcardsに捕まらないよう先に定義）
         .nest_service("/downloads", ServeDir::new(DOWNLOAD_DIR))
+        // API ルート
+        .route("/api/auth/login", post(login_handler))
+        .nest("/api/auth", api_protected)
+        .nest("/api", api_videos)
+        .nest("/api", api_system)
+        // 静的ファイル
+        .nest_service("/login", ServeDir::new("static").append_index_html_on_directories(false))
+        .nest_service("/", ServeDir::new("static"))
         .layer(CorsLayer::permissive())
         .with_state(state);
 
