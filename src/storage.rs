@@ -3,6 +3,13 @@ use std::fs;
 use std::path::Path;
 use serde::{Deserialize, Serialize};
 use anyhow::Result;
+use std::sync::{Mutex, OnceLock};
+
+static METADATA_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn get_lock() -> &'static Mutex<()> {
+    METADATA_LOCK.get_or_init(|| Mutex::new(()))
+}
 
 const BASE_DOWNLOAD_DIR: &str = "downloads";
 
@@ -60,6 +67,7 @@ fn save_metadata(username: &str, map: &HashMap<String, DownloadedFile>) {
 
 /// ダウンロード完了時にメタデータを保存する
 pub fn save_file_metadata(filename: &str, size: u64, owner: &str, title: &str) {
+    let _lock = get_lock().lock().unwrap();
     let mut map = load_metadata(owner);
     let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string();
     map.insert(filename.to_string(), DownloadedFile {
@@ -134,6 +142,7 @@ fn list_files_for_user(username: &str) -> Result<Vec<DownloadedFile>> {
 
 /// ファイル削除時にメタデータも削除する
 pub fn remove_file_metadata(owner: &str, filename: &str) {
+    let _lock = get_lock().lock().unwrap();
     let mut map = load_metadata(owner);
     map.remove(filename);
     save_metadata(owner, &map);

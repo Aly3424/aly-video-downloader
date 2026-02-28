@@ -353,7 +353,7 @@ function renderList(files) {
 
     files.forEach(file => {
         const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
-        const downloadUrl = `/downloads/${encodeURIComponent(file.owner)}/${encodeURIComponent(file.filename)}`;
+        const downloadUrl = `/downloads/${encodeURIComponent(file.owner)}/${encodeURIComponent(file.filename)}?token=${encodeURIComponent(getToken())}`;
         const displayTitle = file.title && file.title !== file.filename ? file.title : file.filename;
         const dateStr = file.downloaded_at ? file.downloaded_at : '';
 

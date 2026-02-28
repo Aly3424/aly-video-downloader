@@ -63,7 +63,13 @@ async fn auth_middleware(
         .get("Authorization")
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
-        .map(|v| v.to_string());
+        .map(|v| v.to_string())
+        .or_else(|| {
+            // クエリパラメータ token= からも取得可能にする（ダウンロード用）
+            request.uri().query()
+                .and_then(|q| q.split('&').find(|s| s.starts_with("token=")))
+                .map(|s| s.trim_start_matches("token=").to_string())
+        });
 
     let token = token.ok_or_else(|| {
         (
@@ -155,13 +161,13 @@ async fn main() {
 
     // 4. アプリ全体の構築
     let app = Router::new()
-        // 最優先: ダウンロード済みファイル（static wildcardsに捕まらないよう先に定義）
-        .nest_service("/downloads", ServeDir::new(DOWNLOAD_DIR))
         // API ルート
         .route("/api/auth/login", post(login_handler))
         .nest("/api/auth", api_protected)
         .nest("/api", api_videos)
         .nest("/api", api_system)
+        // ダウンロード（認証付き）
+        .route("/downloads/:owner/:filename", get(serve_file_handler).layer(middleware::from_fn(auth_middleware)))
         // 静的ファイル
         .nest_service("/login", ServeDir::new("static").append_index_html_on_directories(false))
         .nest_service("/", ServeDir::new("static"))
@@ -457,6 +463,7 @@ async fn download_handler(
 
         let result = downloader::download_video(
             &url,
+            &task_id_clone, // task_id を渡す
             &user_dir,
             &quality,
             &format,
@@ -579,6 +586,47 @@ async fn list_videos_handler(
     match storage::list_files(&user.username, is_admin, show_all) {
         Ok(files) => (StatusCode::OK, Json(files)).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+// =====================
+// ファイル配信（セキュア）
+// =====================
+
+async fn serve_file_handler(
+    axum::Extension(user): axum::Extension<AuthUser>,
+    Path((owner, filename)): Path<(String, String)>,
+) -> impl IntoResponse {
+    // 権限チェック (本人またはAdmin)
+    if user.role != "admin" && user.username != owner {
+        return (StatusCode::FORBIDDEN, "アクセス権限がありません。").into_response();
+    }
+
+    // パストラバーサル防止
+    if filename.contains('/') || filename.contains('\\') || filename.contains("..") {
+        return (StatusCode::BAD_REQUEST, "不正なファイル名です。").into_response();
+    }
+
+    let path = std::path::Path::new(DOWNLOAD_DIR).join(&owner).join(&filename);
+    if !path.exists() {
+        return (StatusCode::NOT_FOUND, "ファイルが見つかりません。").into_response();
+    }
+
+    // tower_http の ServeFile を使って効率的に配信
+    use tower_http::services::ServeFile;
+    match ServeFile::new(&path).into_response(&axum::extract::Request::new(axum::body::Body::empty())).await {
+        Ok(mut res) => {
+            // ブラウザが「ダウンロード」として認識するよう Content-Disposition をセット
+            let encoded_filename = urlencoding::encode(&filename);
+            let cd = format!("attachment; filename*=UTF-8''{}", encoded_filename);
+            
+            res.headers_mut().insert(
+                axum::http::header::CONTENT_DISPOSITION,
+                axum::http::HeaderValue::from_str(&cd).unwrap(),
+            );
+            res
+        }
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "ファイルの読み出しに失敗しました。").into_response(),
     }
 }
 

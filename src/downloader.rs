@@ -34,6 +34,7 @@ pub async fn get_title(url: &str) -> String {
 
 pub async fn download_video<F>(
     url: &str,
+    task_id: &str, // タスクIDを追加
     output_dir: &str,
     quality: &str,
     format: &str,
@@ -46,16 +47,17 @@ where
     let output_template = format!("{}/%(title)s [%(id)s].%(ext)s", output_dir);
 
     let current_dir = std::env::current_dir()?;
-    let temp_dir = current_dir.join("temp");
+    let task_temp_dir = current_dir.join("temp").join(task_id);
+    std::fs::create_dir_all(&task_temp_dir)?;
 
     let mut command = Command::new("yt-dlp");
 
     command
-        .env("TMPDIR", &temp_dir)
+        .env("TMPDIR", &task_temp_dir)
         .arg("-o")
         .arg(&output_template)
         .arg("--paths")
-        .arg(format!("temp:{}", temp_dir.display()))
+        .arg(format!("temp:{}", task_temp_dir.display()))
         // ファイル名は制限しない（日本語OK）
         .arg("--newline")
         .arg("--progress")
@@ -156,6 +158,9 @@ where
 
     let status = child.wait().await?;
     let error_output = stderr_task.await.unwrap_or_default();
+
+    // 一時フォルダを削除
+    let _ = std::fs::remove_dir_all(&task_temp_dir);
 
     if status.success() {
         if final_filename.is_empty() {
