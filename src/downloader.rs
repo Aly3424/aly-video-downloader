@@ -73,21 +73,18 @@ where
             .arg("-f")
             .arg("bestaudio[protocol!=hls][protocol!=m3u8_native]/bestaudio[protocol=https]/bestaudio");
     } else {
-        // H264 (avc1) を優先。なければ通常のbestを使いffmpegでリエンコード
+        // AV1 (av01) を除外し、それ以外の最高画質を選択（CPU負荷軽減のためリエンコードは行わない）
         let format_selector = match quality {
-            "1080p" => "bestvideo[vcodec^=avc1][height<=1080]+bestaudio[acodec^=mp4a]/bestvideo[height<=1080]+bestaudio/best",
-            "720p"  => "bestvideo[vcodec^=avc1][height<=720]+bestaudio[acodec^=mp4a]/bestvideo[height<=720]+bestaudio/best",
-            "360p"  => "bestvideo[vcodec^=avc1][height<=360]+bestaudio[acodec^=mp4a]/bestvideo[height<=360]+bestaudio/best",
-            _       => "bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo+bestaudio/best",
+            "1080p" => "bestvideo[height<=1080][vcodec!=av01]+bestaudio/best[height<=1080]",
+            "720p"  => "bestvideo[height<=720][vcodec!=av01]+bestaudio/best[height<=720]",
+            "360p"  => "bestvideo[height<=360][vcodec!=av01]+bestaudio/best[height<=360]",
+            _       => "bestvideo[vcodec!=av01]+bestaudio/best",
         };
         command
             .arg("--merge-output-format")
             .arg(format) // mp4, webm, etc
             .arg("-f")
-            .arg(format_selector)
-            // H264でない場合はffmpegでリエンコード
-            .arg("--postprocessor-args")
-            .arg("ffmpeg:-c:v libx264 -c:a aac -movflags +faststart");
+            .arg(format_selector);
     }
 
     command.arg(url);
