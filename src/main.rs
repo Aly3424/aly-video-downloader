@@ -417,6 +417,19 @@ async fn download_handler(
     let url = payload.url.clone();
 
     tokio::spawn(async move {
+        // ユーザーフォルダを作成してダウンロード先を決定
+        let user_dir = match storage::ensure_user_dir(&owner) {
+            Ok(d) => d,
+            Err(e) => {
+                let mut tasks = state_clone.tasks.lock().unwrap();
+                if let Some(task) = tasks.get_mut(&task_id_clone) {
+                    task.status = "error".to_string();
+                    task.message = format!("ディレクトリ作成失敗: {}", e);
+                }
+                return;
+            }
+        };
+
         // タイトルを取得
         let title = downloader::get_title(&title_url).await;
 
@@ -433,7 +446,7 @@ async fn download_handler(
 
         let result = downloader::download_video(
             &url,
-            DOWNLOAD_DIR,
+            &user_dir,
             &quality,
             &format,
             move |progress| {
@@ -445,39 +458,26 @@ async fn download_handler(
         )
         .await;
 
-        let mut tasks = state_clone.tasks.lock().unwrap();
-        if let Some(task) = tasks.get_mut(&task_id_clone) {
-            match &result {
-                Ok(_) => {
-                    task.status = "completed".to_string();
-                    task.progress = 100.0;
-                    task.message = "Download completed".to_string();
+        {
+            let mut tasks = state_clone.tasks.lock().unwrap();
+            if let Some(task) = tasks.get_mut(&task_id_clone) {
+                match result {
+                    Ok(filename) => {
+                        task.status = "completed".to_string();
+                        task.progress = 100.0;
+                        task.message = "Download completed".to_string();
 
-                    // ダウンロード完了後にメタデータを保存
-                    // ファイル名を特定するために downloads/ を走査して最新ファイルを取得
-                    if let Ok(entries) = std::fs::read_dir(DOWNLOAD_DIR) {
-                        let mut newest: Option<(std::time::SystemTime, String, u64)> = None;
-                        for entry in entries.flatten() {
-                            let meta = entry.metadata().ok();
-                            let modified = meta.as_ref().and_then(|m| m.modified().ok());
-                            if let (Some(m), Some(fname)) = (modified, entry.file_name().to_str().map(|s| s.to_string())) {
-                                if fname.ends_with("metadata.json") || fname.starts_with('.') {
-                                    continue;
-                                }
-                                let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
-                                if newest.as_ref().map(|(t, _, _)| m > *t).unwrap_or(true) {
-                                    newest = Some((m, fname, size));
-                                }
-                            }
-                        }
-                        if let Some((_, filename, size)) = newest {
-                            storage::save_file_metadata(&filename, size, &task.owner, &task.title);
-                        }
+                        // ファイルサイズを取得してメタデータを保存
+                        let scan_dir = storage::user_dir(&task.owner);
+                        let path = std::path::Path::new(&scan_dir).join(&filename);
+                        let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+                        
+                        storage::save_file_metadata(&filename, size, &task.owner, &task.title);
                     }
-                }
-                Err(e) => {
-                    task.status = "error".to_string();
-                    task.message = e.to_string();
+                    Err(e) => {
+                        task.status = "error".to_string();
+                        task.message = e.to_string();
+                    }
                 }
             }
         }
@@ -515,15 +515,21 @@ async fn delete_file_handler(
     axum::Extension(user): axum::Extension<AuthUser>,
     Path(filename): Path<String>,
 ) -> impl IntoResponse {
-    if filename.contains('/') || filename.contains('\\') {
+    // パストラバーサル防止
+    if filename.contains('/') || filename.contains('\\') || filename.contains("..") {
         return (StatusCode::BAD_REQUEST, "Invalid filename").into_response();
     }
 
-    let path = std::path::Path::new(DOWNLOAD_DIR).join(&filename);
+    // 自分のフォルダ内でのみ削除（Adminでも自分のフォルダのみ）
+    // 注意: Adminが他ユーザーのファイルを削除する場合は別エンドポイントが必要だが、
+    //       今回はユーザー自身のフォルダのみとする
+    let owner = &user.username;
+    let dir = storage::user_dir(owner);
+    let path = std::path::Path::new(&dir).join(&filename);
     if path.exists() {
         match std::fs::remove_file(&path) {
             Ok(_) => {
-                storage::remove_file_metadata(&filename);
+                storage::remove_file_metadata(owner, &filename);
                 (
                     StatusCode::OK,
                     Json(ApiResponse {
@@ -556,10 +562,10 @@ async fn list_videos_handler(
     axum::Extension(user): axum::Extension<AuthUser>,
     Query(query): Query<ListVideosQuery>,
 ) -> impl IntoResponse {
-    let show_all = user.role == "admin" && query.all.as_deref() == Some("1");
-    let owner_filter = if show_all { None } else { Some(user.username.as_str()) };
+    let is_admin = user.role == "admin";
+    let show_all = is_admin && query.all.as_deref() == Some("1");
 
-    match storage::list_files(DOWNLOAD_DIR, owner_filter) {
+    match storage::list_files(&user.username, is_admin, show_all) {
         Ok(files) => (StatusCode::OK, Json(files)).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }

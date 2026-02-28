@@ -119,11 +119,18 @@ where
     });
 
     let mut line = String::new();
-    let re = regex::Regex::new(r"(\d+(\.\d+)?)%").unwrap();
+    let re_progress = regex::Regex::new(r"(\d+(\.\d+)?)%").unwrap();
+    // ファイル名抽出用
+    let re_dest = regex::Regex::new(r"\[download\] Destination: (.*)").unwrap();
+    let re_merger = regex::Regex::new(r"\[Merger\] Merging formats into (.*)").unwrap();
+    let re_ffmpeg = regex::Regex::new(r"\[VideoConvertor\] Converting video from .* to (.*)").unwrap();
+    
+    let mut final_filename = String::new();
     let mut last_update = std::time::Instant::now();
 
     while stdout_reader.read_line(&mut line).await? > 0 {
-        if let Some(caps) = re.captures(&line) {
+        // 進捗
+        if let Some(caps) = re_progress.captures(&line) {
             if let Some(m) = caps.get(1) {
                 if let Ok(p) = m.as_str().parse::<f64>() {
                     if last_update.elapsed().as_millis() > 100 {
@@ -133,6 +140,17 @@ where
                 }
             }
         }
+        
+        // ファイル名抽出
+        let trimmed = line.trim();
+        if let Some(caps) = re_dest.captures(trimmed) {
+            final_filename = caps.get(1).map(|m| m.as_str().trim_matches('"').to_string()).unwrap_or(final_filename);
+        } else if let Some(caps) = re_merger.captures(trimmed) {
+            final_filename = caps.get(1).map(|m| m.as_str().trim_matches('"').to_string()).unwrap_or(final_filename);
+        } else if let Some(caps) = re_ffmpeg.captures(trimmed) {
+            final_filename = caps.get(1).map(|m| m.as_str().trim_matches('"').to_string()).unwrap_or(final_filename);
+        }
+
         line.clear();
     }
 
@@ -140,7 +158,17 @@ where
     let error_output = stderr_task.await.unwrap_or_default();
 
     if status.success() {
-        Ok("Download completed successfully".to_string())
+        if final_filename.is_empty() {
+            Ok("Download completed successfully".to_string())
+        } else {
+            // パスからファイル名のみを抽出
+            let path = std::path::Path::new(&final_filename);
+            let fname = path.file_name()
+                .and_then(|n| n.to_str())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "Download completed successfully".to_string());
+            Ok(fname)
+        }
     } else {
         Err(anyhow::anyhow!("Download failed: {}", error_output))
     }
