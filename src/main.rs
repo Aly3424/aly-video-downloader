@@ -101,6 +101,27 @@ async fn auth_middleware(
     Ok(next.run(request).await)
 }
 
+/// 全てのレスポンスにキャッシュ無効化ヘッダーを付与する
+async fn no_cache_middleware(
+    request: axum::extract::Request,
+    next: Next,
+) -> impl IntoResponse {
+    let mut response = next.run(request).await;
+    response.headers_mut().insert(
+        axum::http::header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("no-store, no-cache, must-revalidate, proxy-revalidate"),
+    );
+    response.headers_mut().insert(
+        axum::http::header::PRAGMA,
+        axum::http::HeaderValue::from_static("no-cache"),
+    );
+    response.headers_mut().insert(
+        axum::http::header::EXPIRES,
+        axum::http::HeaderValue::from_static("0"),
+    );
+    response
+}
+
 // =====================
 // エントリーポイント
 // =====================
@@ -173,6 +194,7 @@ async fn main() {
         .nest_service("/login", ServeDir::new("static").append_index_html_on_directories(false))
         .nest_service("/", ServeDir::new("static"))
         .layer(CorsLayer::permissive())
+        .layer(middleware::from_fn(no_cache_middleware)) // キャッシュ無効化
         .with_state(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
@@ -601,6 +623,10 @@ async fn serve_file_handler(
 ) -> impl IntoResponse {
     // デバッグログ
     println!("DEBUG: serve_file_handler - owner: {}, filename: {}, user: {}", owner, filename, user.username);
+    println!("DEBUG: Incoming Headers:");
+    for (name, value) in req.headers() {
+        println!("  {}: {:?}", name, value);
+    }
 
     // 権限チェック (本人またはAdmin)
     if user.role != "admin" && user.username != owner {
