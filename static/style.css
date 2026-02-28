@@ -53,7 +53,203 @@ header {
     align-items: center;
     margin-bottom: 30px;
     padding: 20px 0;
+    flex-wrap: wrap;
+    gap: 0.8rem;
 }
+
+.header-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+#header-username {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.btn-secondary-sm {
+    padding: 0.35rem 0.75rem;
+    font-size: 0.8rem;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: var(--secondary-bg);
+    color: var(--text-color);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+}
+
+.btn-secondary-sm:hover {
+    background: var(--border-color);
+}
+
+.btn-admin {
+    padding: 0.35rem 0.75rem;
+    font-size: 0.8rem;
+    border-radius: 6px;
+    border: none;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    cursor: pointer;
+    font-family: inherit;
+    transition: opacity 0.2s;
+}
+
+.btn-admin:hover {
+    opacity: 0.88;
+}
+
+/* リストヘッダーとコントロール */
+.list-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.list-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+}
+
+/* ファイルメタ情報 */
+.file-meta {
+    display: flex;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+    margin-top: 0.2rem;
+}
+
+.file-owner,
+.file-date {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+/* モーダル */
+.modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 1rem;
+}
+
+.modal.hidden {
+    display: none;
+}
+
+.modal-content {
+    background: var(--card-bg);
+    border-radius: 16px;
+    padding: 1.5rem;
+    width: 100%;
+    max-width: 520px;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--border-color);
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.2rem;
+}
+
+.modal-header h3 {
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 1.2rem;
+    cursor: pointer;
+    color: var(--text-secondary);
+    padding: 0.2rem 0.5rem;
+}
+
+.modal-body h4 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin-bottom: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.form-row {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.8rem;
+}
+
+.form-row input,
+.form-row select {
+    flex: 1;
+    min-width: 120px;
+    padding: 0.5rem 0.7rem;
+    border-radius: 7px;
+    border: 1.5px solid var(--border-color);
+    background: var(--secondary-bg);
+    color: var(--text-color);
+    font-family: inherit;
+    font-size: 0.85rem;
+}
+
+.btn-create {
+    padding: 0.5rem 1rem;
+    border-radius: 7px;
+    border: none;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+/* ログインボタン（login.htmlでも使用） */
+.login-btn {
+    padding: 0.75rem;
+    border-radius: 8px;
+    border: none;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    font-size: 1rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.login-btn:hover {
+    opacity: 0.9;
+}
+
+.login-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 
 h1 {
     font-size: 1.8rem;
@@ -374,4 +570,60 @@ button#download-btn:disabled {
     button#download-btn {
         width: 100%;
     }
+}
+
+/* yt-dlp ステータスセクション */
+.ytdlp-section {
+    margin-top: 1.5rem;
+    padding: 0.75rem 1rem;
+    background: var(--secondary-bg);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.ytdlp-status {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+#ytdlp-version-label {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--text-color);
+}
+
+#ytdlp-last-updated {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    flex: 1;
+}
+
+.btn-update {
+    padding: 0.35rem 0.9rem;
+    font-size: 0.8rem;
+    border-radius: 6px;
+    border: none;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    cursor: pointer;
+    transition: opacity 0.2s;
+    font-family: inherit;
+}
+
+.btn-update:hover:not(:disabled) {
+    opacity: 0.85;
+}
+
+.btn-update:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+#ytdlp-update-msg {
+    margin-top: 0.4rem;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    word-break: break-all;
 }

@@ -8,16 +8,24 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=4">
+    <link rel="stylesheet" href="style.css?v=5">
 </head>
 
 <body>
     <div class="container">
         <header>
             <h1>Aly Video Downloader</h1>
-            <button id="theme-toggle" class="theme-toggle" aria-label="Toggle Dark Mode">
-                <span class="toggle-icon">🌙</span>
-            </button>
+            <div class="header-controls">
+                <div class="user-info">
+                    <span id="header-username"></span>
+                    <button id="admin-btn" class="btn-admin hidden">ユーザー管理</button>
+                    <button id="change-pass-btn" class="btn-secondary-sm">パスワード変更</button>
+                    <button id="logout-btn" class="btn-secondary-sm">ログアウト</button>
+                </div>
+                <button id="theme-toggle" class="theme-toggle" aria-label="Toggle Dark Mode">
+                    <span class="toggle-icon">🌙</span>
+                </button>
+            </div>
         </header>
 
         <main>
@@ -43,22 +51,79 @@
                     <p><strong>タイトル:</strong> <span id="info-title"></span></p>
                     <p><strong>サービス:</strong> <span id="info-extractor"></span></p>
                 </div>
-                <div id="progress-container" class="hidden">
-                    <!-- 動的にタスクごとのプログレスバーを追加 -->
-                </div>
+                <div id="progress-container" class="hidden"></div>
                 <div id="status-message"></div>
             </section>
 
             <section class="list-section">
-                <h2>ダウンロード済み動画</h2>
-                <button id="refresh-btn">リスト更新</button>
-                <ul id="video-list">
-                    <!-- JSでリストを追加 -->
-                </ul>
+                <div class="list-header">
+                    <h2>ダウンロード済み動画</h2>
+                    <div class="list-controls">
+                        <label id="show-all-label" class="hidden">
+                            <input type="checkbox" id="show-all-checkbox"> 全ユーザーを表示
+                        </label>
+                        <button id="refresh-btn">リスト更新</button>
+                    </div>
+                </div>
+                <ul id="video-list"></ul>
+            </section>
+
+            <section class="ytdlp-section">
+                <div class="ytdlp-status">
+                    <span id="ytdlp-version-label">yt-dlp: 読み込み中...</span>
+                    <span id="ytdlp-last-updated"></span>
+                    <button id="ytdlp-update-btn" class="btn-update">今すぐ更新</button>
+                </div>
+                <div id="ytdlp-update-msg"></div>
             </section>
         </main>
     </div>
-    <script src="app.js?v=2"></script>
+
+    <!-- ユーザー管理モーダル (Admin用) -->
+    <div id="admin-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>ユーザー管理</h3>
+                <button id="close-modal" class="modal-close">✕</button>
+            </div>
+            <div class="modal-body">
+                <h4>新規ユーザー作成</h4>
+                <div class="form-row">
+                    <input type="text" id="new-username" placeholder="ユーザー名">
+                    <input type="password" id="new-password" placeholder="パスワード (8文字以上)">
+                    <select id="new-role">
+                        <option value="user">一般ユーザー</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                    <button id="create-user-btn" class="btn-create">作成</button>
+                </div>
+                <div id="create-user-msg"></div>
+                <h4 style="margin-top:1.5rem">ユーザー一覧</h4>
+                <ul id="user-list"></ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- パスワード変更モーダル -->
+    <div id="change-pass-modal" class="modal hidden">
+        <div class="modal-content" style="max-width:360px">
+            <div class="modal-header">
+                <h3>パスワード変更</h3>
+                <button id="close-pass-modal" class="modal-close">✕</button>
+            </div>
+            <div class="modal-body">
+                <input type="password" id="old-password" placeholder="現在のパスワード" style="width:100%;margin-bottom:0.8rem">
+                <input type="password" id="new-password-field" placeholder="新しいパスワード (8文字以上)"
+                    style="width:100%;margin-bottom:0.8rem">
+                <input type="password" id="confirm-password" placeholder="新しいパスワード（確認）"
+                    style="width:100%;margin-bottom:1rem">
+                <button id="do-change-pass" class="login-btn" style="width:100%">変更する</button>
+                <div id="change-pass-msg" style="margin-top:0.8rem;font-size:0.85rem;text-align:center"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js?v=4"></script>
 </body>
 
 </html>

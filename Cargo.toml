@@ -14,4 +14,8 @@ tracing-subscriber = "0.3"
 anyhow = "1.0"
 uuid = { version = "1.0", features = ["v4", "serde"] }
 regex = "1.10"
+chrono = "0.4"
+bcrypt = "0.15"
+jsonwebtoken = "9"
+
 

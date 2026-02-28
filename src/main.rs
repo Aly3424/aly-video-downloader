@@ -1,55 +1,159 @@
+mod auth;
 mod downloader;
 mod storage;
+mod updater;
 
 use axum::{
-    extract::{Json, Path, State},
-    routing::{get, post, delete},
-    Router,
+    extract::{Json, Path, Query, State},
+    http::{HeaderMap, StatusCode},
+    middleware::{self, Next},
     response::IntoResponse,
-    http::StatusCode,
+    routing::{delete, get, post},
+    Router,
 };
 use serde::{Deserialize, Serialize};
-use std::net::SocketAddr;
-use tower_http::services::ServeDir;
-use tower_http::cors::CorsLayer;
-use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::{Arc, Mutex};
+use tower_http::cors::CorsLayer;
+use tower_http::services::ServeDir;
+use updater::{SharedStatus, YtDlpStatus};
 use uuid::Uuid;
 
 const DOWNLOAD_DIR: &str = "downloads";
 
+// =====================
+// AppState
+// =====================
+
 #[derive(Clone, Debug, Serialize)]
 struct TaskStatus {
     id: String,
-    status: String, // "pending", "downloading", "completed", "error"
+    status: String,
     progress: f64,
     message: String,
+    owner: String,
+    title: String,
 }
 
 struct AppState {
     tasks: Mutex<HashMap<String, TaskStatus>>,
+    ytdlp_status: SharedStatus,
+    auth_state: Arc<auth::AuthState>,
 }
+
+// =====================
+// 認証ミドルウェア
+// =====================
+
+#[derive(Clone)]
+struct AuthUser {
+    user_id: String,
+    username: String,
+    role: String,
+}
+
+/// JWTを検証してリクエストにユーザー情報を付与する
+async fn auth_middleware(
+    headers: HeaderMap,
+    mut request: axum::extract::Request,
+    next: Next,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiResponse>)> {
+    let token = headers
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .map(|v| v.to_string());
+
+    let token = token.ok_or_else(|| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(ApiResponse {
+                status: "error".to_string(),
+                message: "認証が必要です。ログインしてください。".to_string(),
+            }),
+        )
+    })?;
+
+    let claims = auth::verify_token(&token).map_err(|_| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(ApiResponse {
+                status: "error".to_string(),
+                message: "トークンが無効または期限切れです。再ログインしてください。".to_string(),
+            }),
+        )
+    })?;
+
+    request.extensions_mut().insert(AuthUser {
+        user_id: claims.sub,
+        username: claims.username,
+        role: claims.role,
+    });
+
+    Ok(next.run(request).await)
+}
+
+// =====================
+// エントリーポイント
+// =====================
 
 #[tokio::main]
 async fn main() {
-    // ログ設定（簡易）
     tracing_subscriber::fmt::init();
 
-    // ダウンロードディレクトリの作成
     std::fs::create_dir_all(DOWNLOAD_DIR).unwrap();
+    std::fs::create_dir_all("temp").unwrap();
+
+    // 初期adminユーザーを確保
+    auth::ensure_admin_exists().unwrap();
+
+    // yt-dlpバージョン取得
+    let initial_version = updater::get_version()
+        .await
+        .unwrap_or_else(|_| "不明".to_string());
+    println!("yt-dlp バージョン: {}", initial_version);
+
+    let ytdlp_status: SharedStatus = Arc::new(Mutex::new(YtDlpStatus {
+        version: initial_version,
+        last_updated: "未実行".to_string(),
+        updating: false,
+        last_update_result: "自動アップデート待機中...".to_string(),
+    }));
+
+    updater::spawn_auto_updater(ytdlp_status.clone());
 
     let state = Arc::new(AppState {
         tasks: Mutex::new(HashMap::new()),
+        ytdlp_status,
+        auth_state: auth::AuthState::new(),
     });
 
-    let app = Router::new()
-        .nest_service("/", ServeDir::new("static"))
-        .nest_service("/downloads", ServeDir::new(DOWNLOAD_DIR))
+    // 認証不要のルート
+    let public = Router::new()
+        .route("/api/auth/login", post(login_handler))
+        .nest_service("/login", ServeDir::new("static").append_index_html_on_directories(false))
+        .nest_service("/", ServeDir::new("static"));
+
+    // 認証必要のルート
+    let protected = Router::new()
+        .route("/api/auth/me", get(me_handler))
+        .route("/api/auth/password", post(change_password_handler))
         .route("/api/download", post(download_handler))
         .route("/api/videos", get(list_videos_handler))
         .route("/api/info", post(video_info_handler))
         .route("/api/tasks/:id", get(task_status_handler))
         .route("/api/files/:filename", delete(delete_file_handler))
+        .route("/api/ytdlp/version", get(ytdlp_version_handler))
+        .route("/api/ytdlp/update", post(ytdlp_update_handler))
+        .route("/api/admin/users", get(list_users_handler))
+        .route("/api/admin/users", post(create_user_handler))
+        .route("/api/admin/users/:id", delete(delete_user_handler))
+        .layer(middleware::from_fn(auth_middleware));
+
+    let app = public
+        .merge(protected)
+        .nest_service("/downloads", ServeDir::new(DOWNLOAD_DIR))
         .layer(CorsLayer::permissive())
         .with_state(state);
 
@@ -59,6 +163,196 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
+// =====================
+// 共通型
+// =====================
+
+#[derive(Serialize)]
+struct ApiResponse {
+    message: String,
+    status: String,
+}
+
+// =====================
+// 認証API
+// =====================
+
+#[derive(Deserialize)]
+struct LoginRequest {
+    username: String,
+    password: String,
+}
+
+#[derive(Serialize)]
+struct LoginResponse {
+    token: String,
+    username: String,
+    role: String,
+}
+
+async fn login_handler(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<LoginRequest>,
+) -> impl IntoResponse {
+    match auth::login(&payload.username, &payload.password, &state.auth_state).await {
+        Ok(result) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "token": result.token,
+                "username": result.username,
+                "role": format!("{:?}", result.role).to_lowercase(),
+            })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({
+                "status": "error",
+                "message": e.to_string(),
+            })),
+        )
+            .into_response(),
+    }
+}
+
+async fn me_handler(
+    axum::Extension(user): axum::Extension<AuthUser>,
+) -> impl IntoResponse {
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "user_id": user.user_id,
+            "username": user.username,
+            "role": user.role,
+        })),
+    )
+}
+
+#[derive(Deserialize)]
+struct ChangePasswordRequest {
+    old_password: String,
+    new_password: String,
+}
+
+async fn change_password_handler(
+    axum::Extension(user): axum::Extension<AuthUser>,
+    Json(payload): Json<ChangePasswordRequest>,
+) -> impl IntoResponse {
+    match auth::change_password(&user.user_id, &payload.old_password, &payload.new_password).await {
+        Ok(_) => (
+            StatusCode::OK,
+            Json(ApiResponse {
+                status: "ok".to_string(),
+                message: "パスワードを変更しました。".to_string(),
+            }),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse {
+                status: "error".to_string(),
+                message: e.to_string(),
+            }),
+        )
+            .into_response(),
+    }
+}
+
+// =====================
+// ユーザー管理API (Admin)
+// =====================
+
+async fn list_users_handler(
+    axum::Extension(user): axum::Extension<AuthUser>,
+) -> impl IntoResponse {
+    if user.role != "admin" {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({"status": "error", "message": "Admin権限が必要です"})),
+        )
+            .into_response();
+    }
+    match auth::list_users() {
+        Ok(users) => (StatusCode::OK, Json(users)).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"status": "error", "message": e.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct CreateUserRequest {
+    username: String,
+    password: String,
+    role: Option<String>,
+}
+
+async fn create_user_handler(
+    axum::Extension(user): axum::Extension<AuthUser>,
+    Json(payload): Json<CreateUserRequest>,
+) -> impl IntoResponse {
+    if user.role != "admin" {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({"status": "error", "message": "Admin権限が必要です"})),
+        )
+            .into_response();
+    }
+    let role = if payload.role.as_deref() == Some("admin") {
+        auth::Role::Admin
+    } else {
+        auth::Role::User
+    };
+    match auth::create_user(&payload.username, &payload.password, role).await {
+        Ok(info) => (StatusCode::CREATED, Json(info)).into_response(),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"status": "error", "message": e.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn delete_user_handler(
+    axum::Extension(user): axum::Extension<AuthUser>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    if user.role != "admin" {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(ApiResponse {
+                status: "error".to_string(),
+                message: "Admin権限が必要です".to_string(),
+            }),
+        )
+            .into_response();
+    }
+    match auth::delete_user(&id) {
+        Ok(_) => (
+            StatusCode::OK,
+            Json(ApiResponse {
+                status: "ok".to_string(),
+                message: "ユーザーを削除しました。".to_string(),
+            }),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse {
+                status: "error".to_string(),
+                message: e.to_string(),
+            }),
+        )
+            .into_response(),
+    }
+}
+
+// =====================
+// ダウンロードAPI
+// =====================
+
 #[derive(Deserialize)]
 struct InfoRequest {
     url: String,
@@ -67,10 +361,14 @@ struct InfoRequest {
 async fn video_info_handler(Json(payload): Json<InfoRequest>) -> impl IntoResponse {
     match downloader::get_video_info(&payload.url).await {
         Ok(info) => (StatusCode::OK, Json(info)).into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiResponse {
-            status: "error".to_string(),
-            message: e.to_string(),
-        })).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ApiResponse {
+                status: "error".to_string(),
+                message: e.to_string(),
+            }),
+        )
+            .into_response(),
     }
 }
 
@@ -82,12 +380,6 @@ struct DownloadRequest {
 }
 
 #[derive(Serialize)]
-struct ApiResponse {
-    message: String,
-    status: String,
-}
-
-#[derive(Serialize)]
 struct DownloadResponse {
     task_id: String,
     message: String,
@@ -95,17 +387,24 @@ struct DownloadResponse {
 
 async fn download_handler(
     State(state): State<Arc<AppState>>,
-    Json(payload): Json<DownloadRequest>
+    axum::Extension(user): axum::Extension<AuthUser>,
+    Json(payload): Json<DownloadRequest>,
 ) -> impl IntoResponse {
     let task_id = Uuid::new_v4().to_string();
     let quality = payload.quality.unwrap_or_else(|| "best".to_string());
     let format = payload.format.unwrap_or_else(|| "mp4".to_string());
-    
+    let owner = user.username.clone();
+
+    // タイトルを事前取得（非同期でバックグラウンド）
+    let title_url = payload.url.clone();
+
     let task_status = TaskStatus {
         id: task_id.clone(),
         status: "pending".to_string(),
         progress: 0.0,
         message: "Starting...".to_string(),
+        owner: owner.clone(),
+        title: String::new(),
     };
 
     {
@@ -118,10 +417,14 @@ async fn download_handler(
     let url = payload.url.clone();
 
     tokio::spawn(async move {
+        // タイトルを取得
+        let title = downloader::get_title(&title_url).await;
+
         {
             let mut tasks = state_clone.tasks.lock().unwrap();
             if let Some(task) = tasks.get_mut(&task_id_clone) {
                 task.status = "downloading".to_string();
+                task.title = title.clone();
             }
         }
 
@@ -129,26 +432,49 @@ async fn download_handler(
         let task_id_progress = task_id_clone.clone();
 
         let result = downloader::download_video(
-            &url, 
-            DOWNLOAD_DIR, 
-            &quality, 
+            &url,
+            DOWNLOAD_DIR,
+            &quality,
             &format,
             move |progress| {
                 let mut tasks = state_progress.tasks.lock().unwrap();
                 if let Some(task) = tasks.get_mut(&task_id_progress) {
                     task.progress = progress;
                 }
-            }
-        ).await;
+            },
+        )
+        .await;
 
         let mut tasks = state_clone.tasks.lock().unwrap();
         if let Some(task) = tasks.get_mut(&task_id_clone) {
-            match result {
+            match &result {
                 Ok(_) => {
                     task.status = "completed".to_string();
                     task.progress = 100.0;
                     task.message = "Download completed".to_string();
-                },
+
+                    // ダウンロード完了後にメタデータを保存
+                    // ファイル名を特定するために downloads/ を走査して最新ファイルを取得
+                    if let Ok(entries) = std::fs::read_dir(DOWNLOAD_DIR) {
+                        let mut newest: Option<(std::time::SystemTime, String, u64)> = None;
+                        for entry in entries.flatten() {
+                            let meta = entry.metadata().ok();
+                            let modified = meta.as_ref().and_then(|m| m.modified().ok());
+                            if let (Some(m), Some(fname)) = (modified, entry.file_name().to_str().map(|s| s.to_string())) {
+                                if fname.ends_with("metadata.json") || fname.starts_with('.') {
+                                    continue;
+                                }
+                                let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+                                if newest.as_ref().map(|(t, _, _)| m > *t).unwrap_or(true) {
+                                    newest = Some((m, fname, size));
+                                }
+                            }
+                        }
+                        if let Some((_, filename, size)) = newest {
+                            storage::save_file_metadata(&filename, size, &task.owner, &task.title);
+                        }
+                    }
+                }
                 Err(e) => {
                     task.status = "error".to_string();
                     task.message = e.to_string();
@@ -157,53 +483,119 @@ async fn download_handler(
         }
     });
 
-    (StatusCode::OK, Json(DownloadResponse {
-        task_id,
-        message: "Download started".to_string(),
-    }))
+    (
+        StatusCode::OK,
+        Json(DownloadResponse {
+            task_id,
+            message: "Download started".to_string(),
+        }),
+    )
 }
 
 async fn task_status_handler(
     State(state): State<Arc<AppState>>,
-    Path(id): Path<String>
+    Path(id): Path<String>,
 ) -> impl IntoResponse {
     let tasks = state.tasks.lock().unwrap();
     if let Some(task) = tasks.get(&id) {
         (StatusCode::OK, Json(task.clone())).into_response()
     } else {
-        (StatusCode::NOT_FOUND, Json(ApiResponse {
-            status: "error".to_string(),
-            message: "Task not found".to_string(),
-        })).into_response()
+        (
+            StatusCode::NOT_FOUND,
+            Json(ApiResponse {
+                status: "error".to_string(),
+                message: "Task not found".to_string(),
+            }),
+        )
+            .into_response()
     }
 }
 
-async fn delete_file_handler(Path(filename): Path<String>) -> impl IntoResponse {
-    // パス走査攻撃を防ぐためにファイル名のみを許可
+async fn delete_file_handler(
+    axum::Extension(user): axum::Extension<AuthUser>,
+    Path(filename): Path<String>,
+) -> impl IntoResponse {
     if filename.contains('/') || filename.contains('\\') {
         return (StatusCode::BAD_REQUEST, "Invalid filename").into_response();
     }
 
     let path = std::path::Path::new(DOWNLOAD_DIR).join(&filename);
     if path.exists() {
-        match std::fs::remove_file(path) {
-            Ok(_) => (StatusCode::OK, Json(ApiResponse {
-                status: "success".to_string(),
-                message: "File deleted".to_string(),
-            })).into_response(),
-            Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiResponse {
-                status: "error".to_string(),
-                message: e.to_string(),
-            })).into_response(),
+        match std::fs::remove_file(&path) {
+            Ok(_) => {
+                storage::remove_file_metadata(&filename);
+                (
+                    StatusCode::OK,
+                    Json(ApiResponse {
+                        status: "success".to_string(),
+                        message: "File deleted".to_string(),
+                    }),
+                )
+                    .into_response()
+            }
+            Err(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse {
+                    status: "error".to_string(),
+                    message: e.to_string(),
+                }),
+            )
+                .into_response(),
         }
     } else {
         (StatusCode::NOT_FOUND, "File not found").into_response()
     }
 }
 
-async fn list_videos_handler() -> impl IntoResponse {
-    match storage::list_files(DOWNLOAD_DIR) {
+#[derive(Deserialize)]
+struct ListVideosQuery {
+    all: Option<String>, // Adminが全件取得するとき ?all=1
+}
+
+async fn list_videos_handler(
+    axum::Extension(user): axum::Extension<AuthUser>,
+    Query(query): Query<ListVideosQuery>,
+) -> impl IntoResponse {
+    let show_all = user.role == "admin" && query.all.as_deref() == Some("1");
+    let owner_filter = if show_all { None } else { Some(user.username.as_str()) };
+
+    match storage::list_files(DOWNLOAD_DIR, owner_filter) {
         Ok(files) => (StatusCode::OK, Json(files)).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
+}
+
+// =====================
+// yt-dlp管理API
+// =====================
+
+async fn ytdlp_version_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let status = state.ytdlp_status.lock().unwrap().clone();
+    (StatusCode::OK, Json(status))
+}
+
+async fn ytdlp_update_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let status_clone = state.ytdlp_status.clone();
+    {
+        let s = status_clone.lock().unwrap();
+        if s.updating {
+            return (
+                StatusCode::OK,
+                Json(ApiResponse {
+                    status: "skip".to_string(),
+                    message: "すでにアップデート中です".to_string(),
+                }),
+            );
+        }
+    }
+    tokio::spawn(async move {
+        updater::update_ytdlp(status_clone).await.ok();
+    });
+    (
+        StatusCode::OK,
+        Json(ApiResponse {
+            status: "ok".to_string(),
+            message: "アップデートを開始しました".to_string(),
+        }),
+    )
 }

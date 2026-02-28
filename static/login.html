@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ログイン - Aly Video Downloader</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css?v=5">
+    <style>
+        .login-container {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .login-card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 2.5rem 2rem;
+            width: 100%;
+            max-width: 380px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+            border: 1px solid var(--border-color);
+        }
+
+        .login-card h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 0.3rem;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .login-card p.subtitle {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            margin-bottom: 2rem;
+        }
+
+        .login-card label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 0.4rem;
+            color: var(--text-color);
+        }
+
+        .login-card input[type="text"],
+        .login-card input[type="password"] {
+            width: 100%;
+            padding: 0.7rem 1rem;
+            border-radius: 8px;
+            border: 1.5px solid var(--border-color);
+            background: var(--secondary-bg);
+            color: var(--text-color);
+            font-size: 0.95rem;
+            font-family: inherit;
+            box-sizing: border-box;
+            margin-bottom: 1.2rem;
+            transition: border-color 0.2s;
+        }
+
+        .login-card input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .login-btn {
+            width: 100%;
+            padding: 0.8rem;
+            border-radius: 8px;
+            border: none;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            font-size: 1rem;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .login-btn:hover {
+            opacity: 0.9;
+        }
+
+        .login-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        #login-error {
+            margin-top: 1rem;
+            color: #e74c3c;
+            font-size: 0.85rem;
+            text-align: center;
+            min-height: 1.2em;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="login-container">
+        <div class="login-card">
+            <h1>Aly Video Downloader</h1>
+            <p class="subtitle">ログインしてください</p>
+            <form id="login-form">
+                <label for="username">ユーザー名</label>
+                <input type="text" id="username" autocomplete="username" required>
+                <label for="password">パスワード</label>
+                <input type="password" id="password" autocomplete="current-password" required>
+                <button type="submit" class="login-btn" id="login-btn">ログイン</button>
+            </form>
+            <div id="login-error"></div>
+        </div>
+    </div>
+    <script>
+        // テーマ初期化
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+
+        // すでにログイン済みならリダイレクト
+        if (localStorage.getItem('token')) {
+            window.location.href = '/';
+        }
+
+        const form = document.getElementById('login-form');
+        const errorDiv = document.getElementById('login-error');
+        const btn = document.getElementById('login-btn');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            errorDiv.textContent = '';
+            btn.disabled = true;
+            btn.textContent = 'ログイン中...';
+
+            try {
+                const res = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password }),
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    localStorage.setItem('token', data.token);
+                    localStorage.setItem('username', data.username);
+                    localStorage.setItem('role', data.role);
+                    window.location.href = '/';
+                } else {
+                    errorDiv.textContent = data.message || 'ログインに失敗しました。';
+                    btn.disabled = false;
+                    btn.textContent = 'ログイン';
+                }
+            } catch (err) {
+                errorDiv.textContent = 'サーバーに接続できませんでした。';
+                btn.disabled = false;
+                btn.textContent = 'ログイン';
+            }
+        });
+    </script>
+</body>
+
+</html>
