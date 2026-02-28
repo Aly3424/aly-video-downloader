@@ -16,7 +16,8 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use tower_http::cors::CorsLayer;
-use tower_http::services::ServeDir;
+use tower_http::services::{ServeDir, ServeFile};
+use tower::ServiceExt;
 use updater::{SharedStatus, YtDlpStatus};
 use uuid::Uuid;
 
@@ -596,9 +597,14 @@ async fn list_videos_handler(
 async fn serve_file_handler(
     axum::Extension(user): axum::Extension<AuthUser>,
     Path((owner, filename)): Path<(String, String)>,
+    req: axum::extract::Request,
 ) -> impl IntoResponse {
+    // デバッグログ
+    println!("DEBUG: serve_file_handler - owner: {}, filename: {}, user: {}", owner, filename, user.username);
+
     // 権限チェック (本人またはAdmin)
     if user.role != "admin" && user.username != owner {
+        println!("DEBUG: Access Denied for user {}", user.username);
         return (StatusCode::FORBIDDEN, "アクセス権限がありません。").into_response();
     }
 
@@ -609,24 +615,34 @@ async fn serve_file_handler(
 
     let path = std::path::Path::new(DOWNLOAD_DIR).join(&owner).join(&filename);
     if !path.exists() {
+        println!("DEBUG: File not found: {}", path.display());
         return (StatusCode::NOT_FOUND, "ファイルが見つかりません。").into_response();
     }
 
-    // tower_http の ServeFile を使って効率的に配信
-    use tower_http::services::ServeFile;
-    match ServeFile::new(&path).into_response(&axum::extract::Request::new(axum::body::Body::empty())).await {
+    // tower_http の ServeFile を使って元のリクエスト（Range等）を維持して配信
+    let service = ServeFile::new(&path);
+    match service.oneshot(req).await {
         Ok(mut res) => {
             // ブラウザが「ダウンロード」として認識するよう Content-Disposition をセット
             let encoded_filename = urlencoding::encode(&filename);
+            // RFC 6266 に基づく UTF-8 ファイル名指定
             let cd = format!("attachment; filename*=UTF-8''{}", encoded_filename);
             
             res.headers_mut().insert(
                 axum::http::header::CONTENT_DISPOSITION,
                 axum::http::HeaderValue::from_str(&cd).unwrap(),
             );
-            res
+            // キャッシュ制御 (Cloudflare等でのバッファリングを抑制するためのヒント)
+            res.headers_mut().insert(
+                axum::http::header::CACHE_CONTROL,
+                axum::http::HeaderValue::from_static("no-cache, no-store, must-revalidate"),
+            );
+            res.into_response()
         }
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "ファイルの読み出しに失敗しました。").into_response(),
+        Err(e) => {
+            println!("DEBUG: ServeFile Error: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, "ファイルの読み出しに失敗しました。").into_response()
+        }
     }
 }
 
