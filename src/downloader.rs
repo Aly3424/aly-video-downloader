@@ -70,10 +70,17 @@ where
         command
             .arg("-x")
             .arg("--audio-format")
-            .arg(format) // mp3, m4a, etc
-            // SoundCloudのHLS（プレビュー30秒）を回避。HTTPストリームを優先。
+            .arg(format) // mp3, flac, etc
+            .arg("--audio-quality")
+            .arg("0")
+            // バッチファイルのロジック: サムネイルとメタデータの埋め込み
+            .arg("--embed-thumbnail")
+            .arg("--add-metadata")
+            .arg("--convert-thumbnails")
+            .arg("png")
+            // 高品質ソース (Opus 251, AAC 140) を優先。SoundCloud等も考慮。
             .arg("-f")
-            .arg("bestaudio[protocol!=hls][protocol!=m3u8_native]/bestaudio[protocol=https]/bestaudio");
+            .arg("251/140/bestaudio[protocol!=hls][protocol!=m3u8_native]/bestaudio[protocol=https]/bestaudio");
     } else {
         // フォーマット選択ロジックの精緻化
         let format_selector = if format == "mp4" {

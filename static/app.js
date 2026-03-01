@@ -221,6 +221,7 @@ function updateFormatOptions(quality) {
             <option value="mp3" selected>MP3</option>
             <option value="m4a">M4A</option>
             <option value="wav">WAV</option>
+            <option value="flac">FLAC</option>
         `;
     } else {
         formatSelect.innerHTML = `
