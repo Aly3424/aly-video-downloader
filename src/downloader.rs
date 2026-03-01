@@ -77,12 +77,12 @@ where
     } else {
         // フォーマット選択ロジックの精緻化
         let format_selector = if format == "mp4" {
-            // MP4: AV1(av01)とVP9(vp09)を除外し、AVC1(avc1)とAAC(mp4a)を優先する
+            // ユーザー指定の厳密な形式: AVC1ビデオ + M4Aオーディオ優先
             match quality {
-                "1080p" => "bestvideo[height<=1080][vcodec!^=av01][vcodec!^=vp09]+bestaudio[acodec^=mp4a]/best[height<=1080][vcodec!^=av01][vcodec!^=vp09]",
-                "720p"  => "bestvideo[height<=720][vcodec!^=av01][vcodec!^=vp09]+bestaudio[acodec^=mp4a]/best[height<=720][vcodec!^=av01][vcodec!^=vp09]",
-                "360p"  => "bestvideo[height<=360][vcodec!^=av01][vcodec!^=vp09]+bestaudio[acodec^=mp4a]/best[height<=360][vcodec!^=av01][vcodec!^=vp09]",
-                _       => "bestvideo[vcodec!^=av01][vcodec!^=vp09]+bestaudio[acodec^=mp4a]/best[vcodec!^=av01][vcodec!^=vp09]",
+                "1080p" => "bestvideo[height<=1080][vcodec^=avc1]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best[height<=1080]",
+                "720p"  => "bestvideo[height<=720][vcodec^=avc1]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best[height<=720]",
+                "360p"  => "bestvideo[height<=360][vcodec^=avc1]+bestaudio[ext=m4a]/best[height<=360][ext=mp4]/best[height<=360]",
+                _       => "bestvideo[vcodec^=avc1]+bestaudio[ext=m4a]/best[ext=mp4]/best",
             }
         } else {
             // WebM / MKV 等: AV1 や VP9 を含めて最高画質を選択
